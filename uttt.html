@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Tic Tac Toe</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>Tic Tac Toe</h1>
+        <div id="turn-label">Player X's turn</div>
+        <div id="board"></div>
+        <button id="reset-btn">Reset</button>
+        <div>
+            <h3>Move Log</h3>
+            <ul id="move-log"></ul>
+        </div>
+    </div>
+    <script>
+        const players = ["X", "O"];
+        let currentPlayer = 0;
+        let board = [
+            ["", "", ""],
+            ["", "", ""],
+            ["", "", ""]
+        ];
+        let playerMoves = [[], []];
+        let blinkingCell = null;
+        let blinkInterval = null;
+
+        function renderBoard() {
+            const boardDiv = document.getElementById("board");
+            boardDiv.innerHTML = "";
+            for (let r = 0; r < 3; r++) {
+                for (let c = 0; c < 3; c++) {
+                    const btn = document.createElement("button");
+                    btn.className = "cell";
+                    btn.id = `cell-${r}-${c}`;
+                    btn.textContent = board[r][c];
+                    btn.disabled = board[r][c] !== "";
+                    btn.onclick = () => onCellClick(r, c);
+                    boardDiv.appendChild(btn);
+                }
+            }
+        }
+
+        function updateTurnLabel() {
+            document.getElementById("turn-label").textContent = `Player ${players[currentPlayer]}'s turn`;
+        }
+
+        function resetBoard() {
+            board = [
+                ["", "", ""],
+                ["", "", ""],
+                ["", "", ""]
+            ];
+            playerMoves = [[], []];
+            currentPlayer = 0;
+            document.getElementById("move-log").innerHTML = "";
+            stopBlink();
+            renderBoard();
+            updateTurnLabel();
+        }
+
+        function onCellClick(row, col) {
+            stopBlink();
+            if (board[row][col] === "") {
+                board[row][col] = players[currentPlayer];
+                playerMoves[currentPlayer].push([row, col]);
+                addMoveLog(players[currentPlayer], row, col);
+
+                if (playerMoves[currentPlayer].length > 3) {
+                    const [oldRow, oldCol] = playerMoves[currentPlayer].shift();
+                    board[oldRow][oldCol] = "";
+                    removeMoveLog(players[currentPlayer], oldRow, oldCol);
+                }
+
+                renderBoard();
+
+                if (checkWinner(players[currentPlayer])) {
+                    setTimeout(() => {
+                        alert(`Player ${players[currentPlayer]} wins!`);
+                        resetBoard();
+                    }, 100);
+                    return;
+                }
+                if (isFull()) {
+                    setTimeout(() => {
+                        alert("It's a draw!");
+                        resetBoard();
+                    }, 100);
+                    return;
+                }
+
+                currentPlayer = 1 - currentPlayer;
+                updateTurnLabel();
+
+                // Start blinking if next player has 3 moves
+                if (playerMoves[currentPlayer].length === 3) {
+                    const [r, c] = playerMoves[currentPlayer][0];
+                    startBlink(r, c);
+                }
+            }
+        }
+
+        function addMoveLog(player, row, col) {
+            const log = document.getElementById("move-log");
+            const li = document.createElement("li");
+            li.textContent = `Player ${player}: (${row + 1}, ${col + 1})`;
+            li.id = `log-${player}-${row}-${col}`;
+            log.appendChild(li);
+        }
+
+        function removeMoveLog(player, row, col) {
+            const li = document.getElementById(`log-${player}-${row}-${col}`);
+            if (li) li.remove();
+        }
+
+        function checkWinner(player) {
+            // Rows, columns, diagonals
+            for (let i = 0; i < 3; i++) {
+                if (board[i][0] === player && board[i][1] === player && board[i][2] === player) return true;
+                if (board[0][i] === player && board[1][i] === player && board[2][i] === player) return true;
+            }
+            if (board[0][0] === player && board[1][1] === player && board[2][2] === player) return true;
+            if (board[0][2] === player && board[1][1] === player && board[2][0] === player) return true;
+            return false;
+        }
+
+        function isFull() {
+            return board.flat().every(cell => cell !== "");
+        }
+
+        function startBlink(row, col) {
+            stopBlink();
+            blinkingCell = [row, col];
+            const btn = document.getElementById(`cell-${row}-${col}`);
+            if (btn) {
+                btn.classList.add("blinking");
+                blinkInterval = setInterval(() => {
+                    btn.classList.toggle("blinking");
+                }, 700);
+            }
+        }
+
+        function stopBlink() {
+            if (blinkingCell) {
+                const [row, col] = blinkingCell;
+                const btn = document.getElementById(`cell-${row}-${col}`);
+                if (btn) btn.classList.remove("blinking");
+            }
+            if (blinkInterval) clearInterval(blinkInterval);
+            blinkingCell = null;
+            blinkInterval = null;
+        }
+
+        document.getElementById("reset-btn").onclick = resetBoard;
+
+        // Initial render
+        renderBoard();
+        updateTurnLabel();
+    </script>
+</body>
+</html>
