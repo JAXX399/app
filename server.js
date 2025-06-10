@@ -9,6 +9,10 @@ const io = new Server(server);
 let waitingPlayer = null;
 
 io.on("connection", (socket) => {
+    socket.on("disconnect", () => {
+        if (waitingPlayer === socket) waitingPlayer = null;
+    });
+
     if (waitingPlayer) {
         // Pair with waiting player
         const room = `room-${waitingPlayer.id}-${socket.id}`;
@@ -19,13 +23,9 @@ io.on("connection", (socket) => {
         waitingPlayer.emit("gameStart", { symbol: "X", room });
         socket.emit("gameStart", { symbol: "O", room });
 
-        // Listen for moves
-        socket.on("move", (data) => {
-            socket.to(room).emit("move", data);
-        });
-        waitingPlayer.on("move", (data) => {
-            waitingPlayer.to(room).emit("move", data);
-        });
+        // Set room for both sockets
+        socket.data.room = room;
+        waitingPlayer.data.room = room;
 
         waitingPlayer = null;
     } else {
@@ -33,8 +33,10 @@ io.on("connection", (socket) => {
         socket.emit("waiting");
     }
 
-    socket.on("disconnect", () => {
-        if (waitingPlayer === socket) waitingPlayer = null;
+    // Listen for moves from any socket
+    socket.on("move", (data) => {
+        // Broadcast move to the other player in the room
+        socket.to(data.room).emit("move", data);
     });
 });
 
