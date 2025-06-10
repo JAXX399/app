@@ -1,24 +1,31 @@
- <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <title>Tic Tac Toe</title>
     <link rel="stylesheet" href="style.css">
-    <!-- link the js file -->
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
 </head>
 <body>
     <div class="container">
         <h1>Tic Tac Toe</h1>
-        <div id="turn-label">Player X's turn</div>
+        <div id="turn-label">Connecting...</div>
         <div id="board"></div>
-        <button id="reset-btn">Reset</button>
+        <button id="reset-btn" disabled>Reset</button>
         <div>
             <h3>Move Log</h3>
             <ul id="move-log"></ul>
         </div>
     </div>
     <script>
+        // Multiplayer variables
+        const socket = io("http://localhost:3000"); // Change to your server URL in production
+        let mySymbol = null;
+        let myTurn = false;
+        let room = null;
+        let gameActive = false;
+
+        // Game state
         const players = ["X", "O"];
         let currentPlayer = 0;
         let board = [
@@ -30,6 +37,35 @@
         let blinkingCell = null;
         let blinkInterval = null;
 
+        // Multiplayer events
+        socket.on("waiting", () => {
+            document.getElementById("turn-label").textContent = "Waiting for opponent...";
+            document.getElementById("reset-btn").disabled = true;
+        });
+
+        socket.on("gameStart", (data) => {
+            mySymbol = data.symbol;
+            room = data.room;
+            myTurn = mySymbol === "X";
+            gameActive = true;
+            resetBoard();
+            updateTurnLabel();
+            document.getElementById("reset-btn").disabled = false;
+        });
+
+        socket.on("move", (data) => {
+            board = data.board;
+            playerMoves = data.playerMoves;
+            renderBoard();
+            myTurn = true;
+            updateTurnLabel();
+            if (playerMoves[currentPlayer].length === 3) {
+                const [r, c] = playerMoves[currentPlayer][0];
+                startBlink(r, c);
+            }
+        });
+
+        // Game logic
         function renderBoard() {
             const boardDiv = document.getElementById("board");
             boardDiv.innerHTML = "";
@@ -39,7 +75,7 @@
                     btn.className = "cell";
                     btn.id = `cell-${r}-${c}`;
                     btn.textContent = board[r][c];
-                    btn.disabled = board[r][c] !== "";
+                    btn.disabled = board[r][c] !== "" || !gameActive || !myTurn || mySymbol !== players[currentPlayer];
                     btn.onclick = () => onCellClick(r, c);
                     boardDiv.appendChild(btn);
                 }
@@ -47,7 +83,15 @@
         }
 
         function updateTurnLabel() {
-            document.getElementById("turn-label").textContent = `Player ${players[currentPlayer]}'s turn`;
+            if (!gameActive) {
+                document.getElementById("turn-label").textContent = "Waiting for opponent...";
+            } else if (myTurn && mySymbol === players[currentPlayer]) {
+                document.getElementById("turn-label").textContent = "Your turn";
+            } else if (mySymbol !== players[currentPlayer]) {
+                document.getElementById("turn-label").textContent = "Opponent's turn";
+            } else {
+                document.getElementById("turn-label").textContent = "Opponent's turn";
+            }
         }
 
         function resetBoard() {
@@ -65,44 +109,49 @@
         }
 
         function onCellClick(row, col) {
+            if (!gameActive || !myTurn || mySymbol !== players[currentPlayer] || board[row][col] !== "") return;
             stopBlink();
-            if (board[row][col] === "") {
-                board[row][col] = players[currentPlayer];
-                playerMoves[currentPlayer].push([row, col]);
-                addMoveLog(players[currentPlayer], row, col);
+            board[row][col] = mySymbol;
+            playerMoves[currentPlayer].push([row, col]);
+            addMoveLog(mySymbol, row, col);
 
-                if (playerMoves[currentPlayer].length > 3) {
-                    const [oldRow, oldCol] = playerMoves[currentPlayer].shift();
-                    board[oldRow][oldCol] = "";
-                    removeMoveLog(players[currentPlayer], oldRow, oldCol);
-                }
-
-                renderBoard();
-
-                if (checkWinner(players[currentPlayer])) {
-                    setTimeout(() => {
-                        alert(`Player ${players[currentPlayer]} wins!`);
-                        resetBoard();
-                    }, 100);
-                    return;
-                }
-                if (isFull()) {
-                    setTimeout(() => {
-                        alert("It's a draw!");
-                        resetBoard();
-                    }, 100);
-                    return;
-                }
-
-                currentPlayer = 1 - currentPlayer;
-                updateTurnLabel();
-
-                // Start blinking if next player has 3 moves
-                if (playerMoves[currentPlayer].length === 3) {
-                    const [r, c] = playerMoves[currentPlayer][0];
-                    startBlink(r, c);
-                }
+            if (playerMoves[currentPlayer].length > 3) {
+                const [oldRow, oldCol] = playerMoves[currentPlayer].shift();
+                board[oldRow][oldCol] = "";
+                removeMoveLog(mySymbol, oldRow, oldCol);
             }
+
+            renderBoard();
+
+            if (checkWinner(mySymbol)) {
+                setTimeout(() => {
+                    alert("You win!");
+                    socket.emit("move", { board, playerMoves, room });
+                    resetBoard();
+                }, 100);
+                return;
+            }
+            if (isFull()) {
+                setTimeout(() => {
+                    alert("It's a draw!");
+                    socket.emit("move", { board, playerMoves, room });
+                    resetBoard();
+                }, 100);
+                return;
+            }
+
+            currentPlayer = 1 - currentPlayer;
+            myTurn = false;
+            updateTurnLabel();
+
+            // Start blinking if next player has 3 moves
+            if (playerMoves[currentPlayer].length === 3) {
+                const [r, c] = playerMoves[currentPlayer][0];
+                startBlink(r, c);
+            }
+
+            // Send move to opponent
+            socket.emit("move", { board, playerMoves, room });
         }
 
         function addMoveLog(player, row, col) {
@@ -119,7 +168,6 @@
         }
 
         function checkWinner(player) {
-            // Rows, columns, diagonals
             for (let i = 0; i < 3; i++) {
                 if (board[i][0] === player && board[i][1] === player && board[i][2] === player) return true;
                 if (board[0][i] === player && board[1][i] === player && board[2][i] === player) return true;
